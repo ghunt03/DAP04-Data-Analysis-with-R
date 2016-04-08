@@ -1,0 +1,277 @@
+---
+title: "Financial Contributions to Presidential Candidates"
+author: "Gareth Hunt"
+date: "30 March 2016"
+output: html_document
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+# Load all of the packages that you end up using
+# in your analysis in this code chunk.
+
+# Notice that the parameter "echo" was set to FALSE for this code chunk.
+# This prevents the code from displaying in the knitted HTML output.
+# You should set echo=FALSE for all code chunks in your file.
+
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(scales)
+library(ggmap)
+library(maps)
+setwd("/Users/ghunt/Documents/DA/DAP04 - Explore and Summarise Data with R")
+cities <- read.csv('cities.csv', header = T, row.names = NULL, check.names = F, sep = ",")
+financial <- read.csv('P00000001-NY.txt', header = T, row.names = NULL, check.names = F, sep = "\t")
+financial$contb_receipt_dt <- as.Date(financial$contb_receipt_dt, "%d-%b-%y")
+financial$month <- as.Date(cut(financial$contb_receipt_dt,breaks = "month"))
+financial$week <- as.Date(cut(financial$contb_receipt_dt,breaks = "week", start.on.monday = FALSE))
+financial$year <- as.Date(cut(financial$contb_receipt_dt,breaks = "year"))
+
+
+financial <- left_join(financial, cities, by=c("contbr_city" = "city"))
+financial.subset <- subset(financial, 
+                           contb_receipt_amt < 300000 & 
+                             contb_receipt_amt > 0 & 
+                             !is.na(contb_receipt_amt) &
+                             contb_receipt_dt >= as.Date("2015-01-01") &
+                             contb_receipt_dt <= Sys.Date())
+financial.excluded <- subset(financial, contb_receipt_amt > 300000 &
+                               contb_receipt_amt < 0 &
+                                contb_receipt_dt <= as.Date("2015-01-01") &
+                             contb_receipt_dt >= Sys.Date())
+
+financial.group_by_city <- financial.subset %>% 
+  group_by(contbr_city) %>%
+  summarise(contribution_count = n(),
+            contribution_value = sum(contb_receipt_amt),
+            avg_contribution = mean(contb_receipt_amt),
+            longitude = max(longitude),
+            latitude = max(latitude)) %>%
+  arrange(desc(contribution_count))
+
+financial.group_by_candidate <- financial.subset %>% 
+  group_by(cand_id) %>%
+  summarise(contribution_count = n(),
+            contribution_value = sum(contb_receipt_amt),
+            avg_contribution = mean(contb_receipt_amt),
+            max_contribution = max(contb_receipt_amt)) %>%
+  arrange(desc(contribution_count))
+NY <- map_data("state", region="New York")
+```
+
+# {.tabset .tabset-fade .tabset-pills}
+## Introduction
+This report takes a look at the Financial Contributions made to Presenditial Campaigns in the state of New York for 2016. The primary dataset was downloaded from [datasource], however I also created a list of cities in New York along with the latitude and longitude. This data was extracted from [city_datasource]
+
+[datasource]:   http://fec.gov/disclosurep/PDownload.do
+[city_datasource]: http://www.geonames.org
+
+## Data Structure
+The Financial Contribution dataset (after cleaning) contains 167,902 and contains 23 variables, made up of:
+
+|Variable|Name|Meaning / Use|
+|--------|-----|----------------------------------------------------------------------------------------|
+|cmte_id|Committee ID|A 9-character alpha-numeric code assigned to a committee by the Federal Election Commission.|
+|CAND_ID|CANDIDATE ID|A 9-character alpha-numeric code assigned to a candidate by the Federal Election Commission.|
+|CAND_NM|CANDIDATE NAME|Recorded name of the candidate|
+|CONTBR_NM|CONTRIBUTOR NAME|Reported name of the contributor.|
+|CONTBR_CITY|CONTRIBUTOR CITY|Reported city of the contributor|
+|CONTBR_ST|CONTRIBUTOR STATE|Reported state of the contributor|
+|CONTBR_ZIP|CONTRIBUTOR ZIP CODE|Reported zip code of the contributor|
+|CONTBR_EMPLOYER|CONTRIBUTOR EMPLOYER|Reported employer of the contributor|
+|CONTBR_OCCUPATION|CONTRIBUTION OCCUPATION|Reported occupation of the contributor|
+|CONTB_RECEIPT_AMT|CONTRIBUTION RECEIPT AMOUNT|Reported contribution amount|
+|CONTB_RECEIPT_DT|CONTRIBUTION RECEIPT DATE|Reported contribution date|
+|receipt_desc|Receipt Description|Additional information reported by the committee about a specific contribution|
+|memo_cd|Memo Code|'X' indicates the committee has provided additional text to describe a specific| contribution|
+|memo_text|Memo Text|Additional information reported by the  committee about a specific contribution|
+|form_tp|Form Type|Indicates what schedule and line number the reporting committee reported a specific transaction|
+|file_num|File Number|A unique number assigned to a report and all its associated transactions|
+|tran_id|Transaction ID|A unique identifier for each transaction|
+|election_tp|Election Type|This code indicates the election for which the contribution was made. EYYYY (election plus election year)|
+
+
+
+To help with the analysis I have added some additional fields to the dataset
+
+|Variable|Meaning / Use|
+|--------|---------------------------------------------------------------------|
+|month|used for grouping data by month|
+|week|used for grouping data by week|
+|year|used for grouping data by year|
+|latitude|stores the latitude based on the reported contribution city|
+|longitude|stores the longitude based on the reported contribution city|
+
+
+
+## Univariate Analysis
+### What is/are the main feature(s) of interest in your dataset?
+I believe that the main features of interest in this dataset include:
+```{r echo=FALSE}
+cat("Total Value of Contributions: ", 
+    sum(financial.subset$contb_receipt_amt), 
+    "\nTotal Number of Contributions:  ", 
+    nrow(financial.subset))
+
+```
+```{r echo=FALSE}
+ggplot(aes(x=cand_id, label=cand_nm), data = financial.subset) +
+  geom_bar(stat = "count") +
+  theme(axis.text.x = element_text(angle=45))
+summary(financial.subset$contb_receipt_amt)
+```
+
+```{r echo=FALSE}
+p1 <- ggplot(aes(x=contb_receipt_amt), 
+             data=financial.subset) +
+  geom_histogram(binwidth = 50) +
+  geom_vline(aes(xintercept=mean(contb_receipt_amt)),   # Ignore NA values for mean
+               color="red", linetype="dashed", size=1) +
+  scale_x_continuous(limits = c(0, 1500)) +
+  xlab("Contribution Amount") +
+  ylab("Number of Contributions") 
+
+p2 <- ggplot(aes(y=contb_receipt_amt,x=0), 
+             data=financial.subset) +
+  geom_boxplot() +
+  scale_y_continuous(limits = c(0, 5000), breaks=seq(0,5000,500)) +
+  xlab("") +
+  ylab("Value of Contributions") 
+
+grid.arrange(p1, p2, ncol=2, top="Contribution Values")
+summary(financial.subset$contb_receipt_amt)
+```
+
+### What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
+Other features in the dataset that would be useful to investigate are:
+
+- Contributor Occupation - to see if there are any trends based on the type of occupation
+- Contributor Employer - to see if there are company's that contribute more than others 
+- Contributor City - to see if there are particular locations that prefer different candidates
+- Receipt Date of the Contribution - to see if there are certain times (weeks or months) of the campaign that would encourage more people to contribute
+```{r echo=FALSE}
+ggplot() +
+  geom_polygon( data=NY, aes(x=long, y=lat, group = group),color="black", fill = NA ) +
+  geom_jitter(data=financial.group_by_city,
+             aes(x=longitude, y=latitude, size = contribution_count), color="red", alpha=1/5) +
+  scale_size(name="Total Contributions")
+```
+
+```{r echo=FALSE}
+ggplot(aes(x=week), data=financial) +
+  geom_line(stat = "count") +
+  scale_x_date(date_labels = "%b %y") +
+  xlab("Contribution Receipt Date (grouped by week)") +
+  ggtitle("Contributions over time") +
+  ylab("Number of Contributions") 
+print("Summary")
+summary(financial$contb_receipt_dt)
+```
+From this plot we can see that the number of contributions has drastically increased. However the data and summary show an outlier in 2013. I believe that this could be related to possible data entry errors or data recorded later than the transaction occurred.
+```{r echo=FALSE}
+ggplot(aes(x=week), data=financial.subset) +
+  geom_line(stat = "count") +
+  scale_x_date(date_labels = "%b %y") +
+  ggtitle("Contributions over time (last 12 months)") +
+  xlab("Contribution Receipt Date (grouped by week)") +
+  ylab("Number of Contributions") 
+```
+
+### Did you create any new variables from existing variables in the dataset?
+In order to help with analysising the data I created 2 summarised data frames:
+```{r echo=FALSE}
+head(financial.group_by_city, 10)
+```
+```{r echo=FALSE}
+print("Grouped by Candidate")
+financial.group_by_candidate
+```
+I have also added week and month variable's, based on the contribution receipt date, which allows the data to be grouped easier.
+
+
+### Of the features you investigated, were there any unusual distributions? Did you perform any operations on the data to tidy, adjust, or change the form of the data? If so, why did you do this?
+When performing the initial review of the data, I found that there were a couple of outliers that significantly affected the spread of the value of the contributions of the data. These outliers included:
+
+- A contribution of 3,686,000
+- A contribution of -5,400
+
+
+
+## Bivariate Analysis
+### Talk about some of the relationships you observed in this part of the investigation. How did the feature(s) of interest vary with other features in the dataset?
+
+TODO:
+
+
+- Amount by candidate
+
+Include Correlations between data
+
+```{r}
+ggplot(aes(x = cand_id, y = contribution_value), data = financial.group_by_candidate) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle=45)) 
+  
+```
+```{r}
+ggplot(aes(y=contb_receipt_amt,x=cand_id), 
+             data=financial.subset) +
+  geom_boxplot() +
+  scale_y_continuous(limits = c(0, 5000), breaks=seq(0,5000,500)) +
+  xlab("Candidate") +
+  ylab("Value of Contributions") +
+  theme(axis.text.x = element_text(angle=45)) 
+```
+
+
+
+### Did you observe any interesting relationships between the other features (not the main feature(s) of interest)?
+- Amount received over time
+```{r}
+ggplot(aes(x = week, y = contb_receipt_amt), data = financial.subset) +
+  geom_line(stat = 'summary', fun.y = sum) +
+  scale_x_date(date_labels = "%b %y", date_breaks = "1 month") 
+```
+
+```{r}
+ggplot(aes(x = month, y = contb_receipt_amt, group = cand_id, color=cand_id), data = financial.subset) +
+  geom_line(stat = 'summary', fun.y = sum) +
+  scale_x_date(date_labels = "%b %y", date_breaks = "1 month") +
+  scale_y_continuous(breaks = seq(0,3600000, 100000)) +
+  xlab("Month") +
+  ylab("Value of Contributions") 
+```
+```{r}
+ggplot(aes(x = month, group = cand_id, color=cand_id), data = financial.subset) +
+  geom_line(stat="count") +
+  scale_x_date(date_labels = "%b %y", date_breaks = "1 month") +
+  scale_y_continuous() +
+  xlab("Month") +
+  ylab("Number of Contributions") 
+```
+
+```{r}
+ggplot() +
+  geom_polygon(data=NY, aes(x=long, y=lat, group = group),color="black", fill = NA ) +
+  geom_jitter(data=financial.group_by_city,
+             aes(x=longitude, y=latitude, size = contribution_value), color="coral1", alpha=1/5) +
+  scale_size(name="Total Contributions")
+
+
+
+```
+
+
+
+
+### What was the strongest relationship you found?
+
+
+
+## Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the investigation. Were there features that strengthened each other in terms of looking at your feature(s) of interest?
+
+### Were there any interesting or surprising interactions between features?
+
+### OPTIONAL: Did you create any models with your dataset? Discuss the strengths and limitations of your model.
