@@ -440,12 +440,25 @@ bottom5Candidates <- tail(financial.group_by_candidate$cand_id,5)
 ggplot(aes(x = week, y = contb_receipt_amt, group = cand_id, color=cand_id), 
        data = subset(financial.subset, cand_id %in% top5Candidates)) +
   geom_line(stat = 'summary', fun.y = sum) +
+  geom_line(stat="summary", fun.y = mean) +
   facet_wrap(~cand_id, ncol=1,  scales='free_y') + 
   scale_x_date(date_labels = "%b %y", date_breaks = "1 month") +
   xlab("Month") +
   ylab("Value of Contributions") + 
   ggtitle("Contribution Amounts over time for the top 5 candidates")
 ```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(aes(x = week, group = cand_id, color=cand_id), 
+       data = subset(financial.subset, cand_id %in% top5Candidates)) +
+  geom_line(stat = 'count') +
+  facet_wrap(~cand_id, ncol=1,  scales='free_y') + 
+  scale_x_date(date_labels = "%b %y", date_breaks = "1 month") +
+  xlab("Month") +
+  ylab("Number of Contributions") + 
+  ggtitle("Contributions over time for the top 5 candidates")
+```
+
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 heatmapData <- financial.subset %>% 
@@ -495,3 +508,10 @@ ggplot() +
 ```
 
 [Top of Page](#top) 
+
+
+## Reflection / Conclusion
+After exploring the data I was able to draw the conclusion that as the campaign progresses the number of contributions increase for most of the candidates, however this does not have a direct impact on the total value of the contributions for each month. This occurs because the greatest growth in the number of contributions is occurring in the lowest quartile $0.08 - $25.00.
+
+When looking at the location of where contributions are made from, I believe the greatest benefit in this would occur when looking at the USA overall, as we would be able to draw a link between the numbers of contributions and the popularity of each candidate by state.
+
