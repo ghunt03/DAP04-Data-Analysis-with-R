@@ -21,12 +21,22 @@ library(ggmap)
 library(maps)
 library(viridis) 
 library(tidyr)
+library(reshape2)
 setwd("/Users/ghunt/Documents/DA/DAP04 - Data Analysis with R")
-cities <- read.csv('cities.csv', header = T, row.names = NULL, check.names = F, sep = ",")
-financial <- read.csv('P00000001-NY.txt', header = T, row.names = NULL, check.names = F, sep = "\t")
+cities <- read.csv('cities.csv', 
+                   header = T, 
+                   row.names = NULL, 
+                   check.names = F, 
+                   sep = ",")
+financial <- read.csv('P00000001-NY.txt', 
+                      header = T, 
+                      row.names = NULL, 
+                      check.names = F, 
+                      sep = "\t")
 financial$contb_receipt_dt <- as.Date(financial$contb_receipt_dt, "%d-%b-%y")
 financial$month <- as.Date(cut(financial$contb_receipt_dt,breaks = "month"))
-financial$week <- as.Date(cut(financial$contb_receipt_dt,breaks = "week", start.on.monday = FALSE))
+financial$week <- as.Date(cut(financial$contb_receipt_dt,breaks = "week", 
+                              start.on.monday = FALSE))
 financial$year <- as.Date(cut(financial$contb_receipt_dt,breaks = "year"))
 financial$campaign_day <- financial$contb_receipt_dt - as.Date("2015-01-01")
 financial$day_of_week <- weekdays(financial$contb_receipt_dt)
@@ -53,24 +63,49 @@ financial.group_by_city <- financial.subset %>%
   arrange(desc(contribution_count))
 
 financial.group_by_candidate <- financial.subset %>% 
-  group_by(cand_id) %>%
+  group_by(cand_nm) %>%
   summarise(contribution_count = n(),
             contribution_value = sum(contb_receipt_amt),
             avg_contribution = mean(contb_receipt_amt),
-            max_contribution = max(contb_receipt_amt)) %>%
+            max_contribution = max(contb_receipt_amt),
+            max_contribution = max(contb_receipt_amt),
+            min_contribution = min(contb_receipt_amt),
+            median_contribution = median(contb_receipt_amt)) %>%
   arrange(desc(contribution_value))
 
-NY <- map_data("state", region="New York")
-candidates <- arrange(subset(financial.subset[c("cand_id", "cand_nm")],!duplicated(cand_id)), cand_nm)
-contributors <- subset(financial.subset[c("contbr_nm","contbr_city","contbr_employer","contbr_occupation")], !duplicated(contbr_nm))
 
-occupations <- arrange(subset(financial.subset[c("contbr_occupation")],!duplicated(contbr_occupation)), contbr_occupation)
-employers <- arrange(subset(financial.subset[c("contbr_employer")],!duplicated(contbr_employer)), contbr_employer)
+financial.group_by_candidate$percent_count <- 
+  (financial.group_by_candidate$contribution_count / 
+     sum(financial.group_by_candidate$contribution_count)) * 100 
+
+financial.group_by_candidate$percent_amount <- 
+  (financial.group_by_candidate$contribution_value / 
+     sum(financial.group_by_candidate$contribution_value)) * 100 
+
+
+NY <- map_data("state", region="New York")
+candidates <- arrange(subset(financial.subset[c("cand_id", "cand_nm")],
+                             !duplicated(cand_id)), cand_nm)
+contributors <- subset(financial.subset[c("contbr_nm",
+                                          "contbr_city",
+                                          "contbr_employer",
+                                          "contbr_occupation")],
+                       !duplicated(contbr_nm))
+
+occupations <- arrange(subset(financial.subset[c("contbr_occupation")],
+                              !duplicated(contbr_occupation)), 
+                       contbr_occupation)
+employers <- arrange(subset(financial.subset[c("contbr_employer")],
+                            !duplicated(contbr_employer)), 
+                     contbr_employer)
 getEmploymentStatus <- function(employer) {
   self_employed <- list("SELF", "SELF-EMPLOYED", "SELF EMPLOYED")
   retired <- list("RETIRED")
   not_employed <- list("NOT EMPLOYED", "NONE")
-  unknown <- list("N/A", "INFORMATION REQUESTED", "", "INFORMATION REQUESTED PER BEST EFFORTS")
+  unknown <- list("N/A", 
+                  "INFORMATION REQUESTED", 
+                  "", 
+                  "INFORMATION REQUESTED PER BEST EFFORTS")
   employment_status <- ifelse(employer %in% self_employed, 
                               "SELF EMPLOYED", 
                               ifelse(employer %in% retired,
@@ -96,13 +131,26 @@ financial.group_by_employment <- financial.subset %>%
             max_contribution = max(contb_receipt_amt)) %>%
   arrange(desc(contribution_count))
 
+financial.group_by_employment$percent_amount <- 
+  (financial.group_by_employment$contribution_count / 
+     sum(financial.group_by_employment$contribution_count)) * 100 
+
+
 financial.group_by_contributor <- financial.subset %>% 
   group_by(contbr_nm) %>%
   summarise(contribution_count = n(),
             contribution_value = sum(contb_receipt_amt),
             avg_contribution = mean(contb_receipt_amt),
-            max_contribution = max(contb_receipt_amt)) %>%
+            max_contribution = max(contb_receipt_amt),
+            min_contribution = min(contb_receipt_amt),
+            median_contribution = median(contb_receipt_amt)) %>%
   arrange(desc(contribution_count))
+
+
+top5Candidates <- head(financial.group_by_candidate$cand_nm,5)
+bottom5Candidates <- tail(financial.group_by_candidate$cand_nm,5)
+
+
 ```
 
 # {.tabset .tabset-fade .tabset-pills #top}
@@ -183,25 +231,39 @@ cat("Total Value of Contributions: ",
     "\nNumber of Contributors:          ",
     nrow(contributors))
 ```
+The plot and table below show us that there are 2 candidates that received the highest number of contributions compared to the rest of the candidates. These candidates received a total of 80% of the number of contributions with:
 
-The plot below shows us that there are 2 candidates, P0003392 (Hillary Clinton) and P60006723 (Marco Rubio), that received the highest number of contributions.
+- P60006723 (Sanders, Bernard) receiving 44.5%
+- P0003392 (Clinton, Hillary Rodham) receiving 35.5%
+
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-ggplot(aes(x=cand_id, label=cand_nm), data = financial.subset) +
+ggplot(aes(x=cand_nm, label=cand_nm), data = financial.subset) +
   geom_bar(stat = "count") +
-  theme(axis.text.x = element_text(angle=45)) +
   xlab("Candidate") +
   ylab("Number of Contributions") +
+  coord_flip() +
   ggtitle("Contributions per Candidate")
 ```
 
+```{r results="asis", echo=FALSE}
+
+knitr::kable(head(financial.group_by_candidate[,
+                                               c("cand_nm",
+                                                 "contribution_count", 
+                                                 "percent_count")], 
+                  5), 
+             caption = "Percentage of Contributions by the top 5 candidates")
+```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 p1 <- ggplot(aes(x=contb_receipt_amt), 
              data=financial.subset) +
   geom_histogram(binwidth = 50) +
-  geom_vline(aes(xintercept=mean(contb_receipt_amt)),   # Ignore NA values for mean
+  geom_vline(aes(xintercept=mean(contb_receipt_amt)),   
                color="red", linetype="dashed", size=1) +
+  geom_vline(aes(xintercept=median(contb_receipt_amt)),  
+               color="blue", linetype="dashed", size=1) +
   scale_x_continuous(limits = c(0, 1500)) +
   xlab("Contribution Amount") +
   ylab("Number of Contributions") 
@@ -209,8 +271,10 @@ p1 <- ggplot(aes(x=contb_receipt_amt),
 p2 <- ggplot(aes(x=contb_receipt_amt), 
              data=financial.subset) +
   geom_freqpoly() +
-  geom_vline(aes(xintercept=mean(contb_receipt_amt)),   # Ignore NA values for mean
+  geom_vline(aes(xintercept=mean(contb_receipt_amt)),   
                color="red", linetype="dashed", size=1) +
+  geom_vline(aes(xintercept=median(contb_receipt_amt)),   
+               color="blue", linetype="dashed", size=1) +
   scale_x_log10() +
   xlab("Contribution Amount") +
   ylab("Number of Contributions") 
@@ -218,7 +282,11 @@ p2 <- ggplot(aes(x=contb_receipt_amt),
 grid.arrange(p1, p2, ncol=2, top="Contribution Values")
 ```
 
-The first plot in the group above shows that the data is right skewed with the majority of the contributions been less than or equal to $500. So in order to see the spread of data better I performed a log transform on the transaction amount, which can be seen in the second plot of the group.
+The first plot in the group above shows that the data is right skewed with the majority of the contributions been less than or equal to $500. So in order to see the spread of data better I performed a log transform on the transaction amount, which can be seen in the second plot of the group. The red bar on each of the plots above show the average / mean contribution amount of $274.40 and the blue line shows the median contribution amount of $50.00. The summary / statistics of the contribution amounts can be seen below.
+
+```{r echo=FALSE}
+summary(financial.subset$contb_receipt_amt)
+```
 
 
 ### What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
@@ -236,29 +304,40 @@ cat("Employers: ",
     "\nOccupations:", 
     nrow(occupations))
 ```
-This posed an issue with been able to determine if there were any distinct patterns, as some of these could have been similar occupations with different titles or the same employers with different names or recorded differently. So in order to determine if there were any patterns I created an additional variable in the dataset for employment status, based on the listed employer.
+This posed an issue with been able to determine if there were any distinct patterns, as some of these could have been similar occupations with different titles or the same employers with different names or recorded differently. So in order to determine if there were any patterns I created an additional variable in the dataset for employment status, based on the listed employer. From the plot and tables below we are able to see that the bulk (55%) of the contributions came from contributors that are employed at the time of the contribution.
 
 ```{r results="asis", echo=FALSE}
-knitr::kable(financial.group_by_employment)
+knitr::kable(financial.group_by_employment, 
+             caption = "Summary by employment status")
+```
+
+```{r results="asis", echo=FALSE}
+
+knitr::kable(financial.group_by_employment[,c("employment_status", "percent_amount")], 
+             caption = "Percentage of Contributions by Employment Status")
 ```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 ggplot(data=financial.subset, 
-       aes(x=employment_status)) +
+       aes(x=employment_status, fill=employment_status)) +
   geom_bar(stat = "count") +
   xlab("Employment Status") +
   ylab("Number of Contributions") +
-  ggtitle("Contribution Count by Employment Status")
+  ggtitle("Contribution Count by Employment Status") +
+  theme(legend.position="none")
 ```
 
-From this plot we are able to see that the bulk of the contributions came from contributors that are employed at the time of the contribution.
+
 
 #### Location of contributors {#location_of_contributors}
 The plot below shows us that the location of contributions were generally spread out across the state of New York, with a couple of districts (Capital District and CentralNew York), that had a larger number of contributions. This is probably reflective of the population spread across the state of New York and where businesses are generally located.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 ggplot() +
-  geom_polygon( data=NY, aes(x=long, y=lat, group = group),color="black", fill = NA ) +
+  geom_polygon( data=NY, 
+                aes(x=long, y=lat, group = group),
+                color="black", 
+                fill = NA ) +
   geom_point(data=financial.group_by_city,
              aes(x=longitude, y=latitude, size=contribution_count),
              position = position_jitter(h=0),
@@ -268,6 +347,15 @@ ggplot() +
   ggtitle("Contribution Count by City")
 ```
 
+```{r results="asis", echo=FALSE}
+knitr::kable(head(financial.group_by_city[,c("contbr_city", 
+                                             "contribution_count",
+                                             "contribution_value")],
+                  5), 
+             caption = "Contributions for top 5 locations")
+```
+
+
 #### Contributions over time (Receipt Date of the Contribution) {#receipt_dt_of_contributions}
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 ggplot(aes(x=week), data=financial) +
@@ -276,7 +364,6 @@ ggplot(aes(x=week), data=financial) +
   xlab("Contribution Receipt Date (grouped by week)") +
   ggtitle("Contributions over time") +
   ylab("Number of Contributions") 
-print("Summary")
 summary(financial$contb_receipt_dt)
 ```
 
@@ -305,49 +392,77 @@ To help see the spread of contributions made, I also used either a SQRT or LOG10
 
 ## Bivariate Analysis
 ### Relationships between the main features
-The first relationship I analysed was the relationship between the total value of the contributions made to each candidate. The next plot shows the total value of the contribution per candidate. This plot shows that whilst candidate P60006723 (Marco Rubio), had the highest number of contributions the candidate with the highest value of contributions was P0003392 (Hillary Clinton). 
+The first relationship I analysed was the relationship between the total value of the contributions made to each candidate. The next plot shows the total value of the contribution per candidate. This plot shows that whilst candidate P60006723 (Marco Rubio), had the highest number of contributions the candidate with the highest value of contributions was P0003392 (Hillary Clinton), making up 56% of the total contribution amount. 
+
+```{r results="asis", echo=FALSE}
+knitr::kable(financial.group_by_candidate[,
+                                               c("cand_nm",
+                                                 "contribution_value", 
+                                                 "avg_contribution",
+                                                 "max_contribution",
+                                                 "min_contribution",
+                                                 "median_contribution",
+                                                 "percent_amount")], 
+             caption = "Summary of Contribution Value by candidates")
+```
+
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-ggplot(aes(x = cand_id, y = contribution_value), data = financial.group_by_candidate) +
+ggplot(aes(x = cand_nm, y = contribution_value), 
+       data = financial.group_by_candidate) +
   geom_bar(stat = "identity") +
-  scale_y_continuous(breaks = seq(0,36000000, 1500000)) +
-  theme(axis.text.x = element_text(angle=45)) +
   ggtitle("Total Contribution Value by Candidate") +
+  scale_y_continuous(breaks = seq(0,36000000, 5000000), labels = comma) +
   xlab("Candidate ID") +
-  ylab("Contribution Value") 
+  ylab("Contribution Value") +
+  coord_flip()
 ```
+
+
 
 In order to see the spread of the value of the contributions I applied a SQRT coordinate transformation on the y-axis, which can be seen on the plot below.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-ggplot(aes(x = cand_id, y = contribution_value), data = financial.group_by_candidate) +
+ggplot(aes(x = cand_nm, y = contribution_value), 
+       data = financial.group_by_candidate) +
   geom_bar(stat = "identity") +
   coord_trans(y="sqrt" ) +
-  scale_y_continuous(breaks = seq(0,36000000, 1500000)) +
-  theme(axis.text.x = element_text(angle=45)) +
+  scale_y_continuous(breaks = seq(0,36000000, 5000000), labels = comma) +
+  coord_flip() +
   ggtitle("Total Contribution Value by Candidate") +
   xlab("Candidate ID") +
   ylab("Contribution Value (SQRT)") 
 ```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-ggplot(aes(x = cand_id, y = avg_contribution), data = financial.group_by_candidate) +
+ggplot(aes(x = cand_nm, y = avg_contribution), 
+       data = financial.group_by_candidate) +
   geom_bar(stat = "identity") +
   coord_trans(y="sqrt" ) +
-  theme(axis.text.x = element_text(angle=45)) +
+  coord_flip() +
   ggtitle("Average Contribution Value by Candidate") +
   xlab("Candidate ID") +
   ylab("Avg. Contribution Value") 
 ```
 
-The plot below shows the spread of contribution values and the number of times a particular value was made. From this plot we can start to see that as the contribution value increases the number of times the calculation is made decreases.
+The plot below shows the spread of contribution values and the number of times a particular value was made. From this plot we can start to see that as the contribution value increases the number of times the contribution is made decreases.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-ggplot(aes(x = contribution_count, y = contribution_value), data = financial.group_by_contributor) +
+ggplot(aes(x = contribution_count, y = contribution_value), 
+       data = financial.group_by_contributor) +
   geom_point(position = position_jitter(h=0), color="orange") +
-  geom_line(stat="summary", fun.y = mean) +
-  geom_line(stat="summary", fun.y = quantile, fun.args=list(probs=0.1), color="blue", linetype=2) +
-  geom_line(stat="summary", fun.y = quantile, fun.args=list(probs=0.9), color="blue", linetype=2) +
+  geom_line(stat="summary", 
+            fun.y = mean) +
+  geom_line(stat="summary", 
+            fun.y = quantile, 
+            fun.args=list(probs=0.1), 
+            color="blue", 
+            linetype=2) +
+  geom_line(stat="summary", 
+            fun.y = quantile, 
+            fun.args=list(probs=0.9), 
+            color="blue", 
+            linetype=2) +
   xlim(0, quantile(financial.group_by_contributor$contribution_count, 0.95)) +
   ylim(0, quantile(financial.group_by_contributor$contribution_value, 0.95)) +
   geom_smooth(method="lm", color="red") +
@@ -357,6 +472,9 @@ ggplot(aes(x = contribution_count, y = contribution_value), data = financial.gro
   xlab("Total Contribution Value") +
   ylab("Contribution Count") 
 ```
+
+
+
 
 ### Relationships between other features
 #### Contribution Values by Employment Status
@@ -387,7 +505,8 @@ g_legend<-function(a.gplot){
 mylegend<-g_legend(p1)
 grid.arrange(arrangeGrob(p1 + theme(legend.position="none"),
                          p2 + theme(legend.position="none"),
-                         nrow=1, top="Contribution Values by Employment Status"),
+                         nrow=1, 
+                         top="Contribution Values by Employment Status"),
              mylegend, nrow=2,heights=c(10, 1))
 ```
 
@@ -396,15 +515,21 @@ When looking at the contribution values by location we can see similar patterns 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 ggplot() +
-  geom_polygon(data=NY, aes(x=long, y=lat, group = group),color="black", fill = NA ) +
+  geom_polygon(data=NY, 
+               aes(x=long, y=lat, group = group),
+               color="black", 
+               fill = NA ) +
   geom_jitter(data=financial.group_by_city,
-             aes(x=longitude, y=latitude, size = contribution_value), color="coral1", alpha=0.75) +
+             aes(x=longitude, y=latitude, size = contribution_value), 
+             color="coral1", 
+             alpha=0.75) +
   scale_size(name="Value of Contributions")
 ```
 
 #### Contribution Values over time
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-ggplot(aes(x = week, y = contb_receipt_amt), data = financial.subset) +
+ggplot(aes(x = week, y = contb_receipt_amt), 
+       data = financial.subset) +
   geom_line(stat = 'summary', fun.y = sum) +
   scale_x_date(date_labels = "%b %y", date_breaks = "1 month") 
 ```
@@ -417,17 +542,22 @@ The strongest relationship that I observed was the number of contributions been 
 ## Multivariate Analysis
 
 ### Relationships
-During this part of the analysis, I decided to see how the timing or progression of the campaign impacted the amount and number of the contributions. The first part I wanted to investigate was seeing if different buckets / bins of contribution amounts increased or decreased more than others. In order to determine this I broke the contribution amounts into the relevant quartile and from the plot below I could see that whilst the value of contributions per month is increasing for each quartile, the quartile with the greatest increase is occurring for the lowest bucket (0.08-25).
+During this part of the analysis, I decided to see how the timing or progression of the campaign impacted the amount and number of the contributions. The first part I wanted to investigate was seeing if different buckets / bins of contribution amounts increased or decreased more than others. In order to determine this I broke the contribution amounts into the relevant quartile and from the plot below I could see that whilst the value of contributions per month is increasing for each quartile, the quartile with the greatest increase is occurring for the lowest bucket (0-25).
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 # TODO fix labels
-financial.subset$contb_receipt_amt.quartile <- with(financial.subset, cut(contb_receipt_amt,
+financial.subset$quartile <- with(financial.subset, 
+                                                    cut(contb_receipt_amt,
                                                                           breaks=quantile(contb_receipt_amt, 
                                                                                           probs=seq(0,1, by=0.25),
                                                                                           na.rm=TRUE),
-                                                                          include.lowest=TRUE))
+                                                                          include.lowest=TRUE,
+                                                                          labels = c("0 - 25", 
+                                                                                     "25 - 50", 
+                                                                                     "50 - 100", 
+                                                                                     "100 - 10800")))
 
-ggplot(aes(x = month, colour=contb_receipt_amt.quartile), 
+ggplot(aes(x = month, colour=quartile), 
              data = financial.subset) +
   geom_line(stat="count") 
 ```
@@ -435,42 +565,42 @@ ggplot(aes(x = month, colour=contb_receipt_amt.quartile),
 The next analysis I wanted to look at here was the top 5 candidates and to see how their total contribution amounts varied over time.The plots below show that for the most of the top 5 candidates they all have ups and downs, with all candidates dropping around the holiday season. The candidate with the highest / most consistent trend of growth was P60007168 (Sanders, Bernard). The only candidate with the reverse trend was P60008059 (Bush, Jeb). The heatmaps further down below show a similar story for all candidates.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-top5Candidates <- head(financial.group_by_candidate$cand_id,5)
-bottom5Candidates <- tail(financial.group_by_candidate$cand_id,5)
-ggplot(aes(x = week, y = contb_receipt_amt, group = cand_id, color=cand_id), 
-       data = subset(financial.subset, cand_id %in% top5Candidates)) +
+
+ggplot(aes(x = week, y = contb_receipt_amt, group = cand_nm, color=cand_nm), 
+       data = subset(financial.subset, cand_nm %in% top5Candidates)) +
   geom_line(stat = 'summary', fun.y = sum) +
-  geom_line(stat="summary", fun.y = mean) +
-  facet_wrap(~cand_id, ncol=1,  scales='free_y') + 
+  facet_wrap(~cand_nm, ncol=1,  scales='free_y') + 
   scale_x_date(date_labels = "%b %y", date_breaks = "1 month") +
   xlab("Month") +
   ylab("Value of Contributions") + 
+  theme(legend.position="none") +
   ggtitle("Contribution Amounts over time for the top 5 candidates")
 ```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-ggplot(aes(x = week, group = cand_id, color=cand_id), 
-       data = subset(financial.subset, cand_id %in% top5Candidates)) +
+ggplot(aes(x = week, group = cand_nm, color=cand_id), 
+       data = subset(financial.subset, cand_nm %in% top5Candidates)) +
   geom_line(stat = 'count') +
-  facet_wrap(~cand_id, ncol=1,  scales='free_y') + 
+  facet_wrap(~cand_nm, ncol=1,  scales='free_y') + 
   scale_x_date(date_labels = "%b %y", date_breaks = "1 month") +
   xlab("Month") +
   ylab("Number of Contributions") + 
+  theme(legend.position="none") +
   ggtitle("Contributions over time for the top 5 candidates")
 ```
 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 heatmapData <- financial.subset %>% 
-  group_by(cand_id, month) %>%
+  group_by(cand_nm, month) %>%
   summarise(contribution_count = n(),
             contribution_value = sum(contb_receipt_amt))
 
-ggplot(aes(x=month, y=cand_id, fill=contribution_count),
+ggplot(aes(x=month, y=cand_nm, fill=contribution_count),
        data=heatmapData) +
   geom_tile(size=0.1, color="white") +
   scale_fill_viridis(name="# Contributions") +
-  labs(x="Month", y="Candidate ID", title="Contributions per month") +
+  labs(x="Month", y="Candidate", title="Contributions per month") +
   theme(legend.title=element_text(size=6)) + 
   theme(legend.title.align=1) +
   theme(legend.text=element_text(size=6)) +
@@ -480,10 +610,10 @@ ggplot(aes(x=month, y=cand_id, fill=contribution_count),
   theme(panel.margin.y=unit(0.5, "cm")) +
   theme(panel.margin.x=unit(0.5, "cm"))
 
-ggplot(aes(x=month, y=cand_id, fill=contribution_value),
+ggplot(aes(x=month, y=cand_nm, fill=contribution_value),
        data=heatmapData) +
   geom_tile(size=0.1, color="white") +
-  labs(x="Month", y="Candidate ID", title="Contributions per month") +
+  labs(x="Month", y="Candidate", title="Contributions per month") +
   scale_fill_viridis(name="Contribution Amounts") +
   theme(legend.title=element_text(size=6)) + 
   theme(legend.title.align=1) +
@@ -499,19 +629,97 @@ I also wanted to see if different candidates received contributions from differe
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 ggplot() +
-  geom_polygon(data=NY, aes(x=long, y=lat, group = group),color="black", fill = NA ) +
-  geom_point(data = subset(financial.subset, cand_id %in% top5Candidates),
-             aes(x=longitude, y=latitude), color="coral1", alpha=0.75, size=0.5) +
-  facet_wrap(~cand_id, ncol=2) + 
+  geom_polygon(data=NY, 
+               aes(x=long, y=lat, group = group),
+               color="black", 
+               fill = NA ) +
+  geom_point(data = subset(financial.subset, cand_nm %in% top5Candidates),
+             aes(x=longitude, y=latitude), 
+             color="coral1", 
+             alpha=0.75, 
+             size=0.5) +
+  facet_wrap(~cand_nm, ncol=2) + 
   scale_size(name="Total Contributions") +
   labs(x="", y="", title="Contributions by location to Top 5 Candidates") 
 ```
 
 [Top of Page](#top) 
 
+## Final Plots
+The plot below shows us the following:
 
-## Reflection / Conclusion
+- The number of contributions grow as the campaign progresses
+- the quartile of contribution values with the highest growth is the $0 to $25 range
+- the difference between the shapes of the area's, supports that there is no direct correlation between the number of contributions and the total value contributed per period. This can be seen prior to July 2015 where there are slight increases in the number of contributions, however the total value of the contributions is almost equal to the end of the data.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+p1 <- ggplot(aes(x=week), 
+             data=financial.subset) +
+  geom_area(stat = "count") +
+  labs(x=NULL, y="Number of Contributions") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+p2 <- ggplot(aes(x=week), 
+             data=financial.subset) +
+  geom_area(stat = "count", aes(colour=quartile, fill=quartile)) +
+  labs(x=NULL, y="Number of Contributions") +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank(),
+        legend.position="none")
+p3 <- ggplot(aes(x=week, y=contb_receipt_amt), 
+             data=financial.subset) +
+  geom_area(stat = 'summary', fun.y = sum) +
+  scale_x_date(date_labels = "%b %y") +
+  xlab("Contribution Receipt Date (grouped by Week)") +
+  ylab("Value of Contributions") 
+
+grid.arrange(p1, p2, p3, ncol=1)
+```
+
+The plot below shows us that for most of the candidates the bulk of their total contributions came from contributions that were between $100 - $10,800. When you compare this to the contributions over time it shows that people were generally contributing higher amounts earlier in the campaign and the smaller values were happening at the end of the campaign.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+candidates.group_by_quartile <- financial.subset[,c("cand_nm", "quartile")] %>%
+  group_by(cand_nm, quartile) %>%
+  summarise(count = n())
+
+ggplot(aes(x=cand_nm, y=count, fill=quartile),
+       data=candidates.group_by_quartile) +
+  geom_bar(stat="identity", position="fill") +
+  coord_flip() +
+  xlab("Candidate") +
+  ylab("Percentage") 
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+temp_df <- financial.group_by_candidate[,c("cand_nm", "percent_amount", "percent_count")]
+candidates.percent <- melt(temp_df, id.vars="cand_nm")
+candidates.percent$category[candidates.percent$variable == "percent_count"] <- "% of Count"
+candidates.percent$category[candidates.percent$variable == "percent_amount"] <- "% of Total Value"
+
+
+ggplot(aes(x=cand_nm, y=value, fill=category),
+       data=candidates.percent) +
+  geom_bar(stat="identity", position="dodge") +
+  coord_flip() +
+  xlab("Candidate") +
+  ylab("Percentage") 
+```
+
+
+
+
 After exploring the data I was able to draw the conclusion that as the campaign progresses the number of contributions increase for most of the candidates, however this does not have a direct impact on the total value of the contributions for each month. This occurs because the greatest growth in the number of contributions is occurring in the lowest quartile $0.08 - $25.00.
 
+
+
+
+
+## Reflection / Conclusion
+
 When looking at the location of where contributions are made from, I believe the greatest benefit in this would occur when looking at the USA overall, as we would be able to draw a link between the numbers of contributions and the popularity of each candidate by state.
+
+Another aspect that could have been looked at which might have provided some benefit in analysing is to look at the gender and age of the contributors, as this could have helped to see if there were and groups of peole more likely to contribut to other candidates thn others.
+
+The hardest part of this investigation was trying to determine which data to compare to each other and I found that there was greater beneift in grouping the contributions by groups, for example employment status.
 
