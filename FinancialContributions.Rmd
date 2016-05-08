@@ -672,7 +672,7 @@ p3 <- ggplot(aes(x=week, y=contb_receipt_amt),
   xlab("Contribution Receipt Date (grouped by Week)") +
   ylab("Value of Contributions") 
 
-grid.arrange(p1, p2, p3, ncol=1)
+grid.arrange(p1, p2, p3, ncol=1, top="Contributions over time")
 ```
 
 The plot below shows us that for most of the candidates the bulk of their total contributions came from contributions that were between $100 - $10,800. When you compare this to the contributions over time it shows that people were generally contributing higher amounts earlier in the campaign and the smaller values were happening at the end of the campaign.
@@ -687,8 +687,13 @@ ggplot(aes(x=cand_nm, y=count, fill=quartile),
   geom_bar(stat="identity", position="fill") +
   coord_flip() +
   xlab("Candidate") +
-  ylab("Percentage") 
+  ylab("Percentage") +
+  ggtitle("% of Contributions in each quartile") +
+  theme(legend.position="bottom")
 ```
+
+The plot below shows the breakdown of the percentage of both the number of contributions and value of contributions per candidate. From this plot we can see that whilst Bernard Sanders received the highest percentage of the number of contributions he did not receive the highest value. Which shows that his contributions were of lower value compared to other candidates, like Hilary Clinton.
+This is also supported in the quartile plot above as the bulk of Bernard Sanders contributions were in the lowest quartile, where Hilary Clinton's contribution values were more spread out. Other candidates like Bush Jeb and Marco Rubio received a low number of contributions, however they received higher value contributions, which pushed their % of the Total Value up, but kept their % of the Total count lower.
 
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
@@ -703,16 +708,10 @@ ggplot(aes(x=cand_nm, y=value, fill=category),
   geom_bar(stat="identity", position="dodge") +
   coord_flip() +
   xlab("Candidate") +
-  ylab("Percentage") 
+  ylab("Percentage") +
+  ggtitle("% Break down of Contributions by Candidate") +
+  theme(legend.position="bottom")
 ```
-
-
-
-
-After exploring the data I was able to draw the conclusion that as the campaign progresses the number of contributions increase for most of the candidates, however this does not have a direct impact on the total value of the contributions for each month. This occurs because the greatest growth in the number of contributions is occurring in the lowest quartile $0.08 - $25.00.
-
-
-
 
 
 ## Reflection / Conclusion
